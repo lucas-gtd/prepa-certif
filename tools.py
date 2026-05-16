@@ -48,6 +48,16 @@ def search_microsoft_learn(certification: str) -> list:
     return results
 
 
+def fetch_certifications() -> list[str]:
+    resp = requests.get(
+        "https://learn.microsoft.com/api/catalog/",
+        params={"type": "certifications", "locale": "en-us"},
+        timeout=15,
+    ).json()
+    certs = resp.get("certifications", [])
+    return sorted(set(c.get("title") for c in certs if c.get("title")))
+
+
 def process_tool_usage(response, input_list):
     for item in response.output:
         if item.type == "function_call":

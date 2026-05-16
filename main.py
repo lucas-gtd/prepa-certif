@@ -1,12 +1,12 @@
 from openai import OpenAI
 from os import getenv
-import sys
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
+from InquirerPy import inquirer
 
-from tools import tools, process_tool_usage
+from tools import tools, process_tool_usage, fetch_certifications
 
 load_dotenv()
 
@@ -17,22 +17,15 @@ client = OpenAI(
 
 console = Console()
 
-# Render a proper Rich panel; then move the cursor inside it for input
+with console.status("[bold yellow]Loading certifications...[/bold yellow]", spinner="dots"):
+    cert_choices = fetch_certifications()
+
 console.print()
-console.print(Panel(
-    " ",
-    title="[bold yellow]Give the certification name[/bold yellow]",
-    border_style="yellow",
-    padding=(0, 1),
-))
-# Cursor is on the line after the bottom border.
-# Move up 2 lines (to the content line), right 2 chars (past │ and its padding space).
-sys.stdout.write("\033[2A\033[2C")
-sys.stdout.flush()
-cert_name = input().strip()
-# Move cursor down past the bottom border line.
-sys.stdout.write("\033[1B\r")
-sys.stdout.flush()
+cert_name = inquirer.fuzzy(
+    message="Select a certification:",
+    choices=cert_choices,
+    mandatory=True,
+).execute()
 
 console.print()
 
