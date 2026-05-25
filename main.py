@@ -1,5 +1,6 @@
 from openai import OpenAI
 from os import getenv
+import json
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.panel import Panel
@@ -32,7 +33,14 @@ console.print()
 inputs = [
     {
         "role": "system",
-        "content": "You are an assistant that ONLY give the user a list of Microsoft learning paths for his chosen certification exam."
+        "content": (
+            "You help the user prepare for a Microsoft certification exam. "
+            "You MUST call search_microsoft_learn to get official learning paths "
+            "and documentation, AND call search_youtube_videos to find relevant "
+            "video tutorials. You may use get_youtube_transcript to verify that a "
+            "video is actually about the certification before recommending it. "
+            "Only recommend resources that are clearly relevant."
+        )
     },
     {
         "role": "user",
@@ -41,37 +49,44 @@ inputs = [
 ]
 
 with console.status("[bold green]Working[/bold green]", spinner="dots"):
-    response = client.responses.create(
-        model=getenv('MODEL_ID'),
-        tools=tools,
-        input=inputs,
-    )
+    while True:
+        response = client.responses.create(
+            model=getenv('MODEL_ID'),
+            tools=tools,
+            input=inputs,
+        )
 
-    for item in response.output:
-        if item.type == "function_call":
+        tool_calls = [item for item in response.output if item.type == "function_call"]
+        if not tool_calls:
+            break
+
+        for item in tool_calls:
             inputs.append(item)
+        process_tool_usage(response, inputs)
 
-    process_tool_usage(response, inputs)
-
-    # Extract the raw search results and build a clean, standalone request
-    # so the final call never sees the first call's reasoning text.
-    search_results = next(
-        (item["output"] for item in inputs
-         if isinstance(item, dict) and item.get("type") == "function_call_output"),
-        "[]"
-    )
+    # Aggregate every tool result the agent collected and ask the model
+    # for a clean, standalone formatted answer.
+    collected = [
+        {"call_id": item["call_id"], "output": item["output"]}
+        for item in inputs
+        if isinstance(item, dict) and item.get("type") == "function_call_output"
+    ]
 
     response = client.responses.create(
         model=getenv('MODEL_ID'),
         instructions=(
-            "Output a clean numbered list of Microsoft Learn learning paths and documentation "
-            "pages relevant to the certification. For each item include: the title and the URL. "
-            "Group them under '## Learning Paths' and '## Documentation'. "
-            "Only include items directly related to the certification."
+            "Output a clean markdown answer for the user with three sections: "
+            "'## Learning Paths', '## Documentation', and '## YouTube Videos'. "
+            "For Learning Paths and Documentation, list title + URL. "
+            "For YouTube Videos, list title, channel, duration and URL. "
+            "Only include items directly relevant to the certification."
         ),
         input=[{
             "role": "user",
-            "content": f"Certification: {cert_name}\n\nSearch results (JSON):\n{search_results}"
+            "content": (
+                f"Certification: {cert_name}\n\n"
+                f"Tool results (JSON):\n{json.dumps(collected)}"
+            )
         }],
     )
 
