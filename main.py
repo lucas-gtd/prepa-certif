@@ -1,99 +1,62 @@
-from openai import OpenAI
-from os import getenv
-import json
-from dotenv import load_dotenv
-from rich.console import Console
-from rich.panel import Panel
-from rich.markdown import Markdown
-from InquirerPy import inquirer
+"""Entry point for Prépa Certif.
 
-from tools import tools, process_tool_usage, fetch_certifications
+Run without arguments → launches the desktop GUI (default for everyone).
+Run with `--cli` → falls back to the classic terminal experience.
+"""
+from __future__ import annotations
 
-load_dotenv()
+import sys
 
-client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=getenv("OPENROUTER_API_KEY"),
-)
 
-console = Console()
+def _run_cli() -> None:
+    import json
+    from os import getenv
 
-with console.status("[bold yellow]Loading certifications...[/bold yellow]", spinner="dots"):
-    cert_choices = fetch_certifications()
+    from dotenv import load_dotenv
+    from InquirerPy import inquirer
+    from rich.console import Console
+    from rich.markdown import Markdown
+    from rich.panel import Panel
 
-console.print()
-cert_name = inquirer.fuzzy(
-    message="Select a certification:",
-    choices=cert_choices,
-    mandatory=True,
-).execute()
+    from agent import run_certification_agent
+    from tools import fetch_certifications
 
-console.print()
+    load_dotenv()
+    console = Console()
 
-inputs = [
-    {
-        "role": "system",
-        "content": (
-            "You help the user prepare for a Microsoft certification exam. "
-            "You MUST call search_microsoft_learn to get official learning paths "
-            "and documentation, AND call search_youtube_videos to find relevant "
-            "video tutorials. You may use get_youtube_transcript to verify that a "
-            "video is actually about the certification before recommending it. "
-            "Only recommend resources that are clearly relevant."
-        )
-    },
-    {
-        "role": "user",
-        "content": cert_name
-    }
-]
+    with console.status("[bold yellow]Loading certifications...[/bold yellow]", spinner="dots"):
+        cert_choices = fetch_certifications()
 
-with console.status("[bold green]Working[/bold green]", spinner="dots"):
-    while True:
-        response = client.responses.create(
-            model=getenv('MODEL_ID'),
-            tools=tools,
-            input=inputs,
+    console.print()
+    cert_name = inquirer.fuzzy(
+        message="Select a certification:",
+        choices=cert_choices,
+        mandatory=True,
+    ).execute()
+
+    console.print()
+    with console.status("[bold green]Working[/bold green]", spinner="dots") as status:
+        text = run_certification_agent(
+            cert_name,
+            on_status=lambda m: status.update(f"[bold green]{m}[/bold green]"),
         )
 
-        tool_calls = [item for item in response.output if item.type == "function_call"]
-        if not tool_calls:
-            break
+    console.print()
+    console.print(Panel(
+        Markdown(text),
+        title=f"[bold green]Results for {cert_name}[/bold green]",
+        border_style="green",
+        padding=(1, 2),
+    ))
 
-        for item in tool_calls:
-            inputs.append(item)
-        process_tool_usage(response, inputs)
 
-    # Aggregate every tool result the agent collected and ask the model
-    # for a clean, standalone formatted answer.
-    collected = [
-        {"call_id": item["call_id"], "output": item["output"]}
-        for item in inputs
-        if isinstance(item, dict) and item.get("type") == "function_call_output"
-    ]
+def main() -> None:
+    if "--cli" in sys.argv[1:]:
+        _run_cli()
+        return
+    from gui import main as gui_main
+    gui_main()
 
-    response = client.responses.create(
-        model=getenv('MODEL_ID'),
-        instructions=(
-            "Output a clean markdown answer for the user with three sections: "
-            "'## Learning Paths', '## Documentation', and '## YouTube Videos'. "
-            "For Learning Paths and Documentation, list title + URL. "
-            "For YouTube Videos, list title, channel, duration and URL. "
-            "Only include items directly relevant to the certification."
-        ),
-        input=[{
-            "role": "user",
-            "content": (
-                f"Certification: {cert_name}\n\n"
-                f"Tool results (JSON):\n{json.dumps(collected)}"
-            )
-        }],
-    )
 
-console.print()
-console.print(Panel(
-    Markdown(response.output_text),
-    title=f"[bold green]Results for {cert_name}[/bold green]",
-    border_style="green",
-    padding=(1, 2),
-))
+if __name__ == "__main__":
+    main()
