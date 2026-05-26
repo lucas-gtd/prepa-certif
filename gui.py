@@ -1,22 +1,20 @@
 """Desktop GUI for Prépa Certif.
 
-Built with Tkinter (standard library) so it works out of the box on
-Windows/macOS/Linux without extra runtime dependencies. The interface is
-designed to be approachable for non-technical users and accessible:
+Modern desktop UI inspired by Claude Desktop / Discord / ChatGPT:
 
-* Large, resizable fonts and high-contrast-friendly colors.
-* Full keyboard navigation (Tab/Shift-Tab, Enter to run, Esc to cancel).
-* Searchable certification picker (start typing to filter).
-* Screen reader friendly: every control has a visible label, the live status
-  area uses a labelled region, and results are exposed as plain selectable
-  text rather than custom-drawn widgets.
-* Clickable links in the result view (with keyboard alternative: links are
-  also listed as plain URLs the user can copy).
-* Settings dialog for the API key so users never have to edit a .env file.
+* Dark, warm color palette with a single accent color.
+* Sidebar + content layout with subtle separators (no Win95 chrome).
+* Soft typography (Segoe UI Variable on Windows, system defaults elsewhere).
+* Rounded "pill" accent button with hover state.
+* Card-style result area, no SUNKEN borders or LabelFrame chrome.
+* Full keyboard navigation, screen-reader friendly labels, and clickable
+  links (with the raw URL kept inline for copy/paste and accessibility).
+* Settings dialog for the API key so users never edit a .env file.
 """
 from __future__ import annotations
 
 import os
+import platform
 import re
 import threading
 import webbrowser
@@ -26,10 +24,10 @@ from tkinter import (
     BOTH,
     DISABLED,
     END,
+    FLAT,
     LEFT,
     NORMAL,
     RIGHT,
-    SUNKEN,
     TOP,
     W,
     X,
@@ -52,7 +50,55 @@ from tools import fetch_certifications
 ENV_PATH = Path(__file__).resolve().parent / ".env"
 DEFAULT_MODEL_ID = "google/gemma-4-31b-it"
 
-APP_TITLE = "Prépa Certif — Microsoft Certification Study Planner"
+APP_TITLE = "Prépa Certif"
+APP_SUBTITLE = "Microsoft Certification Study Planner"
+
+
+# ---------------------------------------------------------------------------
+# Theme
+# ---------------------------------------------------------------------------
+
+class Theme:
+    """Modern dark palette inspired by Claude Desktop's warm neutrals."""
+
+    # Surfaces
+    bg = "#1f1e1d"          # app background
+    sidebar = "#191817"     # sidebar / header background
+    surface = "#262524"     # cards, inputs
+    surface_hi = "#2f2d2c"  # hover / focus
+    border = "#3a3836"
+
+    # Text
+    text = "#ececec"
+    text_muted = "#a3a09c"
+    text_subtle = "#6f6c68"
+
+    # Accent (Claude-ish warm coral)
+    accent = "#d97757"
+    accent_hi = "#e08a6e"
+    accent_pressed = "#c2613f"
+    accent_text = "#1a1716"
+
+    # Semantic
+    link = "#f0a37f"
+    error = "#e06c75"
+
+
+def _ui_font_family() -> str:
+    """Pick a clean, modern UI font available on the host system."""
+    families = set(tkfont.families())
+    for candidate in (
+        "Segoe UI Variable",
+        "Segoe UI",
+        "SF Pro Text",
+        "Inter",
+        "Helvetica Neue",
+        "Helvetica",
+        "Arial",
+    ):
+        if candidate in families:
+            return candidate
+    return tkfont.nametofont("TkDefaultFont").cget("family")
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +108,10 @@ APP_TITLE = "Prépa Certif — Microsoft Certification Study Planner"
 def ensure_env_file() -> None:
     """Make sure a .env file exists so set_key() can write to it."""
     if not ENV_PATH.exists():
-        ENV_PATH.write_text(f"OPENROUTER_API_KEY=\nMODEL_ID={DEFAULT_MODEL_ID}\n", encoding="utf-8")
+        ENV_PATH.write_text(
+            f"OPENROUTER_API_KEY=\nMODEL_ID={DEFAULT_MODEL_ID}\n",
+            encoding="utf-8",
+        )
     load_dotenv(ENV_PATH, override=True)
 
 
@@ -70,7 +119,6 @@ def save_settings(api_key: str, model_id: str) -> None:
     ensure_env_file()
     set_key(str(ENV_PATH), "OPENROUTER_API_KEY", api_key)
     set_key(str(ENV_PATH), "MODEL_ID", model_id or DEFAULT_MODEL_ID)
-    # Make changes visible to the current process immediately.
     os.environ["OPENROUTER_API_KEY"] = api_key
     os.environ["MODEL_ID"] = model_id or DEFAULT_MODEL_ID
 
@@ -85,30 +133,39 @@ class SettingsDialog(Toplevel):
         self.title("Settings")
         self.transient(master)
         self.grab_set()
+        self.configure(bg=Theme.bg)
         self.resizable(False, False)
-        self.minsize(460, 200)
+        self.minsize(520, 240)
 
         ensure_env_file()
         self.api_key_var = StringVar(value=os.getenv("OPENROUTER_API_KEY", ""))
         self.model_var = StringVar(value=os.getenv("MODEL_ID", DEFAULT_MODEL_ID))
 
-        frame = ttk.Frame(self, padding=16)
-        frame.pack(fill=BOTH, expand=True)
+        frame = ttk.Frame(self, padding=24, style="Card.TFrame")
+        frame.pack(fill=BOTH, expand=True, padx=16, pady=16)
 
-        intro = ttk.Label(
+        ttk.Label(frame, text="Settings", style="H1.TLabel").grid(
+            row=0, column=0, columnspan=2, sticky=W, pady=(0, 4)
+        )
+        ttk.Label(
             frame,
             text=(
                 "Enter your OpenRouter API key. You can get a free key at "
                 "https://openrouter.ai/keys."
             ),
-            wraplength=420,
+            wraplength=460,
             justify=LEFT,
-        )
-        intro.grid(row=0, column=0, columnspan=2, sticky=W, pady=(0, 12))
+            style="Muted.TLabel",
+        ).grid(row=1, column=0, columnspan=2, sticky=W, pady=(0, 16))
 
-        ttk.Label(frame, text="OpenRouter API key:").grid(row=1, column=0, sticky=W, pady=4)
-        key_entry = ttk.Entry(frame, textvariable=self.api_key_var, width=40, show="•")
-        key_entry.grid(row=1, column=1, sticky="ew", pady=4)
+        ttk.Label(frame, text="OpenRouter API key", style="FieldLabel.TLabel").grid(
+            row=2, column=0, columnspan=2, sticky=W, pady=(0, 4)
+        )
+        key_entry = ttk.Entry(
+            frame, textvariable=self.api_key_var, width=44, show="•",
+            style="Modern.TEntry",
+        )
+        key_entry.grid(row=3, column=0, columnspan=2, sticky="ew", ipady=4)
 
         show_var = StringVar(value="0")
 
@@ -117,18 +174,28 @@ class SettingsDialog(Toplevel):
 
         ttk.Checkbutton(
             frame, text="Show key", variable=show_var, onvalue="1", offvalue="0",
-            command=toggle_show,
-        ).grid(row=2, column=1, sticky=W)
+            command=toggle_show, style="Modern.TCheckbutton",
+        ).grid(row=4, column=0, sticky=W, pady=(6, 14))
 
-        ttk.Label(frame, text="Model ID:").grid(row=3, column=0, sticky=W, pady=4)
-        ttk.Entry(frame, textvariable=self.model_var, width=40).grid(row=3, column=1, sticky="ew", pady=4)
+        ttk.Label(frame, text="Model ID", style="FieldLabel.TLabel").grid(
+            row=5, column=0, columnspan=2, sticky=W, pady=(0, 4)
+        )
+        ttk.Entry(
+            frame, textvariable=self.model_var, width=44, style="Modern.TEntry",
+        ).grid(row=6, column=0, columnspan=2, sticky="ew", ipady=4)
 
+        frame.columnconfigure(0, weight=1)
         frame.columnconfigure(1, weight=1)
 
-        btns = ttk.Frame(frame)
-        btns.grid(row=4, column=0, columnspan=2, sticky="e", pady=(16, 0))
-        ttk.Button(btns, text="Cancel", command=self.destroy).pack(side=RIGHT, padx=(8, 0))
-        ttk.Button(btns, text="Save", command=self._save, default="active").pack(side=RIGHT)
+        btns = ttk.Frame(frame, style="Card.TFrame")
+        btns.grid(row=7, column=0, columnspan=2, sticky="e", pady=(20, 0))
+        ttk.Button(
+            btns, text="Cancel", command=self.destroy, style="Ghost.TButton",
+        ).pack(side=RIGHT, padx=(8, 0))
+        ttk.Button(
+            btns, text="Save", command=self._save, style="Accent.TButton",
+            default="active",
+        ).pack(side=RIGHT)
 
         self.bind("<Return>", lambda _e: self._save())
         self.bind("<Escape>", lambda _e: self.destroy())
@@ -149,9 +216,10 @@ class PrepaCertifApp:
 
     def __init__(self, root: Tk):
         self.root = root
-        self.root.title(APP_TITLE)
-        self.root.geometry("960x720")
-        self.root.minsize(720, 520)
+        self.root.title(f"{APP_TITLE} — {APP_SUBTITLE}")
+        self.root.geometry("1100x780")
+        self.root.minsize(820, 560)
+        self.root.configure(bg=Theme.bg)
 
         ensure_env_file()
 
@@ -174,37 +242,189 @@ class PrepaCertifApp:
 
     # ---- UI construction ------------------------------------------------
     def _setup_fonts(self) -> None:
-        # Larger default fonts for readability.
-        self.base_font = tkfont.nametofont("TkDefaultFont")
-        self.base_font.configure(size=11)
-        self.text_font = tkfont.nametofont("TkTextFont")
-        self.text_font.configure(size=11)
-        self.heading_font = tkfont.Font(family=self.base_font.cget("family"), size=16, weight="bold")
-        self.body_font = tkfont.Font(family=self.base_font.cget("family"), size=12)
-        self.h2_font = tkfont.Font(family=self.base_font.cget("family"), size=13, weight="bold")
+        family = _ui_font_family()
+        self.ui_family = family
+
+        # Tk built-in named fonts (affects ttk widgets by default)
+        for name, size in (
+            ("TkDefaultFont", 11),
+            ("TkTextFont", 11),
+            ("TkMenuFont", 11),
+            ("TkHeadingFont", 11),
+        ):
+            try:
+                f = tkfont.nametofont(name)
+                f.configure(family=family, size=size)
+            except Exception:
+                pass
+
+        self.font_body = tkfont.Font(family=family, size=11)
+        self.font_body_lg = tkfont.Font(family=family, size=12)
+        self.font_h1 = tkfont.Font(family=family, size=20, weight="bold")
+        self.font_h2 = tkfont.Font(family=family, size=15, weight="bold")
+        self.font_h3 = tkfont.Font(family=family, size=12, weight="bold")
+        self.font_brand = tkfont.Font(family=family, size=14, weight="bold")
+        self.font_small = tkfont.Font(family=family, size=10)
 
     def _setup_style(self) -> None:
         style = ttk.Style()
-        # 'clam' is consistent across platforms and respects custom colors.
         try:
             style.theme_use("clam")
         except Exception:
             pass
-        style.configure("TButton", padding=8)
-        style.configure("Accent.TButton", padding=10, font=(self.base_font.cget("family"), 12, "bold"))
-        style.configure("TLabel", padding=2)
-        style.configure("Header.TLabel", font=self.heading_font)
-        style.configure("Status.TLabel", padding=6)
+
+        T = Theme
+        ui = self.ui_family
+
+        # Base
+        style.configure(".", background=T.bg, foreground=T.text, font=(ui, 11))
+
+        # Frames
+        style.configure("TFrame", background=T.bg)
+        style.configure("Sidebar.TFrame", background=T.sidebar)
+        style.configure("Card.TFrame", background=T.surface)
+        style.configure("Header.TFrame", background=T.sidebar)
+
+        # Labels
+        style.configure("TLabel", background=T.bg, foreground=T.text)
+        style.configure("Sidebar.TLabel", background=T.sidebar, foreground=T.text)
+        style.configure("SidebarMuted.TLabel",
+                        background=T.sidebar, foreground=T.text_muted, font=(ui, 10))
+        style.configure("Brand.TLabel",
+                        background=T.sidebar, foreground=T.text, font=self.font_brand)
+        style.configure("BrandTag.TLabel",
+                        background=T.sidebar, foreground=T.accent, font=(ui, 10, "bold"))
+        style.configure("H1.TLabel", background=T.bg, foreground=T.text, font=self.font_h1)
+        style.configure("H2.TLabel", background=T.bg, foreground=T.text, font=self.font_h2)
+        style.configure("Muted.TLabel",
+                        background=T.bg, foreground=T.text_muted, font=(ui, 10))
+        style.configure("CardMuted.TLabel",
+                        background=T.surface, foreground=T.text_muted, font=(ui, 10))
+        style.configure("FieldLabel.TLabel",
+                        background=T.surface, foreground=T.text_muted,
+                        font=(ui, 10, "bold"))
+        style.configure("Status.TLabel",
+                        background=T.sidebar, foreground=T.text_muted,
+                        font=(ui, 10), wraplength=240, justify=LEFT)
+        style.configure("StatusBar.TLabel",
+                        background=T.sidebar, foreground=T.text_subtle,
+                        font=(ui, 9), padding=(12, 6))
+
+        # Separators
+        style.configure("TSeparator", background=T.border)
+
+        # Buttons — Accent (filled pill)
+        style.configure(
+            "Accent.TButton",
+            background=T.accent, foreground=T.accent_text,
+            font=(ui, 11, "bold"),
+            borderwidth=0, focusthickness=0, relief=FLAT, padding=(18, 10),
+        )
+        style.map(
+            "Accent.TButton",
+            background=[("active", T.accent_hi), ("pressed", T.accent_pressed),
+                        ("disabled", T.surface_hi)],
+            foreground=[("disabled", T.text_subtle)],
+        )
+
+        # Buttons — Ghost (outline-less, subtle)
+        style.configure(
+            "Ghost.TButton",
+            background=T.surface, foreground=T.text,
+            font=(ui, 11), borderwidth=0, focusthickness=0,
+            relief=FLAT, padding=(14, 9),
+        )
+        style.map(
+            "Ghost.TButton",
+            background=[("active", T.surface_hi), ("pressed", T.border)],
+        )
+
+        # Buttons — Sidebar icon-like
+        style.configure(
+            "Sidebar.TButton",
+            background=T.sidebar, foreground=T.text_muted,
+            font=(ui, 11), borderwidth=0, focusthickness=0,
+            relief=FLAT, padding=(10, 8), anchor="w",
+        )
+        style.map(
+            "Sidebar.TButton",
+            background=[("active", T.surface), ("pressed", T.surface_hi)],
+            foreground=[("active", T.text)],
+        )
+
+        # Entries
+        style.configure(
+            "Modern.TEntry",
+            fieldbackground=T.surface, background=T.surface,
+            foreground=T.text, insertcolor=T.text,
+            bordercolor=T.border, lightcolor=T.border, darkcolor=T.border,
+            borderwidth=1, relief=FLAT, padding=8,
+        )
+        style.map(
+            "Modern.TEntry",
+            bordercolor=[("focus", T.accent)],
+            lightcolor=[("focus", T.accent)],
+            darkcolor=[("focus", T.accent)],
+        )
+
+        # Combobox
+        style.configure(
+            "Modern.TCombobox",
+            fieldbackground=T.surface, background=T.surface,
+            foreground=T.text, arrowcolor=T.text_muted,
+            bordercolor=T.border, lightcolor=T.border, darkcolor=T.border,
+            borderwidth=1, relief=FLAT, padding=8,
+        )
+        style.map(
+            "Modern.TCombobox",
+            fieldbackground=[("readonly", T.surface), ("disabled", T.surface)],
+            foreground=[("disabled", T.text_subtle)],
+            bordercolor=[("focus", T.accent)],
+            lightcolor=[("focus", T.accent)],
+            darkcolor=[("focus", T.accent)],
+            arrowcolor=[("active", T.text)],
+        )
+        # The combobox dropdown listbox isn't a ttk widget — style via option db.
+        self.root.option_add("*TCombobox*Listbox.background", T.surface)
+        self.root.option_add("*TCombobox*Listbox.foreground", T.text)
+        self.root.option_add("*TCombobox*Listbox.selectBackground", T.accent)
+        self.root.option_add("*TCombobox*Listbox.selectForeground", T.accent_text)
+        self.root.option_add("*TCombobox*Listbox.borderWidth", 0)
+        self.root.option_add("*TCombobox*Listbox.font", (ui, 11))
+
+        # Checkbutton
+        style.configure(
+            "Modern.TCheckbutton",
+            background=T.surface, foreground=T.text_muted,
+            focuscolor=T.surface, font=(ui, 10),
+        )
+        style.map(
+            "Modern.TCheckbutton",
+            background=[("active", T.surface)],
+            foreground=[("active", T.text)],
+        )
+
+        # Progress bar
+        style.configure(
+            "Modern.Horizontal.TProgressbar",
+            background=T.accent, troughcolor=T.surface,
+            bordercolor=T.surface, lightcolor=T.accent, darkcolor=T.accent,
+            thickness=4,
+        )
 
     def _build_menu(self) -> None:
         menubar = Menu(self.root)
-        filemenu = Menu(menubar, tearoff=0)
+        filemenu = Menu(menubar, tearoff=0, bg=Theme.surface, fg=Theme.text,
+                        activebackground=Theme.accent, activeforeground=Theme.accent_text,
+                        borderwidth=0)
         filemenu.add_command(label="Settings…", accelerator="Ctrl+,", command=self.open_settings)
         filemenu.add_separator()
         filemenu.add_command(label="Quit", accelerator="Alt+F4", command=self.root.destroy)
         menubar.add_cascade(label="File", menu=filemenu)
 
-        helpmenu = Menu(menubar, tearoff=0)
+        helpmenu = Menu(menubar, tearoff=0, bg=Theme.surface, fg=Theme.text,
+                        activebackground=Theme.accent, activeforeground=Theme.accent_text,
+                        borderwidth=0)
         helpmenu.add_command(label="How to use", command=self.show_help)
         helpmenu.add_command(label="About", command=self.show_about)
         menubar.add_cascade(label="Help", menu=helpmenu)
@@ -212,102 +432,208 @@ class PrepaCertifApp:
         self.root.config(menu=menubar)
 
     def _build_layout(self) -> None:
-        outer = ttk.Frame(self.root, padding=16)
-        outer.pack(fill=BOTH, expand=True)
+        T = Theme
 
-        header = ttk.Label(
-            outer,
-            text="Microsoft Certification Study Planner",
-            style="Header.TLabel",
+        # Root grid: sidebar | content
+        self.root.grid_columnconfigure(0, weight=0, minsize=280)
+        self.root.grid_columnconfigure(1, weight=1)
+        self.root.grid_rowconfigure(0, weight=1)
+
+        # ---- Sidebar ----
+        sidebar = ttk.Frame(self.root, style="Sidebar.TFrame")
+        sidebar.grid(row=0, column=0, sticky="nsew")
+        sidebar.grid_propagate(False)
+        sidebar.configure(width=280)
+        sidebar.grid_rowconfigure(4, weight=1)
+        sidebar.grid_columnconfigure(0, weight=1)
+
+        # Brand row
+        brand = ttk.Frame(sidebar, style="Sidebar.TFrame")
+        brand.grid(row=0, column=0, sticky="ew", padx=20, pady=(22, 4))
+        # Faux logo dot
+        dot = ttk.Frame(brand, style="Sidebar.TFrame", width=10, height=10)
+        dot.pack(side=LEFT, padx=(0, 10), pady=(4, 0))
+        dot.configure(width=10, height=10)
+        # Use a Canvas dot for color
+        try:
+            import tkinter as tk_  # local
+            c = tk_.Canvas(brand, width=12, height=12, bg=T.sidebar,
+                           highlightthickness=0, bd=0)
+            c.create_oval(1, 1, 11, 11, fill=T.accent, outline="")
+            c.pack(side=LEFT, padx=(0, 10), pady=(4, 0))
+            dot.destroy()
+        except Exception:
+            pass
+
+        ttk.Label(brand, text=APP_TITLE, style="Brand.TLabel").pack(side=LEFT)
+
+        ttk.Label(
+            sidebar,
+            text=APP_SUBTITLE.upper(),
+            style="BrandTag.TLabel",
+        ).grid(row=1, column=0, sticky=W, padx=20, pady=(0, 22))
+
+        ttk.Separator(sidebar, orient="horizontal").grid(
+            row=2, column=0, sticky="ew", padx=20
         )
-        header.pack(anchor=W)
 
-        subtitle = ttk.Label(
-            outer,
+        # Sidebar navigation / actions
+        nav = ttk.Frame(sidebar, style="Sidebar.TFrame")
+        nav.grid(row=3, column=0, sticky="ew", padx=12, pady=12)
+        nav.grid_columnconfigure(0, weight=1)
+
+        ttk.Button(
+            nav, text="⚙   Settings", style="Sidebar.TButton",
+            command=self.open_settings,
+        ).grid(row=0, column=0, sticky="ew", pady=2)
+        ttk.Button(
+            nav, text="❓   How to use", style="Sidebar.TButton",
+            command=self.show_help,
+        ).grid(row=1, column=0, sticky="ew", pady=2)
+        ttk.Button(
+            nav, text="ℹ    About", style="Sidebar.TButton",
+            command=self.show_about,
+        ).grid(row=2, column=0, sticky="ew", pady=2)
+
+        # Status panel (bottom of sidebar)
+        status_panel = ttk.Frame(sidebar, style="Sidebar.TFrame")
+        status_panel.grid(row=5, column=0, sticky="ew", padx=20, pady=(0, 18))
+        status_panel.grid_columnconfigure(0, weight=1)
+
+        ttk.Separator(sidebar, orient="horizontal").grid(
+            row=4, column=0, sticky="sew", padx=20, pady=(0, 14)
+        )
+
+        ttk.Label(status_panel, text="STATUS", style="BrandTag.TLabel").grid(
+            row=0, column=0, sticky=W, pady=(0, 6),
+        )
+        self.status_var = StringVar(value="Loading certifications…")
+        self.status_label = ttk.Label(
+            status_panel, textvariable=self.status_var, style="Status.TLabel",
+        )
+        self.status_label.grid(row=1, column=0, sticky="ew")
+        self.progress = ttk.Progressbar(
+            status_panel, mode="indeterminate",
+            style="Modern.Horizontal.TProgressbar",
+        )
+        self.progress.grid(row=2, column=0, sticky="ew", pady=(10, 0))
+        self.progress.start(80)
+
+        # ---- Content ----
+        content = ttk.Frame(self.root, style="TFrame")
+        content.grid(row=0, column=1, sticky="nsew")
+        content.grid_rowconfigure(2, weight=1)
+        content.grid_columnconfigure(0, weight=1)
+
+        # Header
+        header = ttk.Frame(content, style="TFrame", padding=(32, 28, 32, 8))
+        header.grid(row=0, column=0, sticky="ew")
+        ttk.Label(
+            header, text="Build a study plan", style="H1.TLabel",
+        ).pack(anchor=W)
+        ttk.Label(
+            header,
             text=(
-                "Pick a certification and we'll gather official Microsoft Learn "
-                "resources and curated YouTube videos for you."
+                "Pick a Microsoft certification — we'll gather official Microsoft "
+                "Learn paths and curated YouTube videos for you."
             ),
-            wraplength=900,
-            justify=LEFT,
-        )
-        subtitle.pack(anchor=W, pady=(2, 12))
+            style="Muted.TLabel", wraplength=820, justify=LEFT,
+        ).pack(anchor=W, pady=(6, 0))
 
-        # Picker row
-        picker = ttk.Frame(outer)
-        picker.pack(fill=X)
+        # Picker card
+        picker_wrap = ttk.Frame(content, style="TFrame", padding=(32, 8, 32, 8))
+        picker_wrap.grid(row=1, column=0, sticky="ew")
+        picker_wrap.grid_columnconfigure(0, weight=1)
 
-        ttk.Label(picker, text="Certification:").pack(side=LEFT, padx=(0, 8))
+        card = ttk.Frame(picker_wrap, style="Card.TFrame", padding=18)
+        card.grid(row=0, column=0, sticky="ew")
+        card.grid_columnconfigure(0, weight=1)
+
+        row = ttk.Frame(card, style="Card.TFrame")
+        row.grid(row=0, column=0, sticky="ew")
+        row.grid_columnconfigure(0, weight=1)
 
         self.cert_var = StringVar()
         self.cert_combo = ttk.Combobox(
-            picker, textvariable=self.cert_var, state="disabled", width=60,
-            font=self.body_font,
+            row, textvariable=self.cert_var, state="disabled",
+            font=self.font_body_lg, style="Modern.TCombobox",
         )
-        self.cert_combo.pack(side=LEFT, fill=X, expand=True)
+        self.cert_combo.grid(row=0, column=0, sticky="ew", ipady=6)
         self.cert_combo.bind("<KeyRelease>", self._on_combo_typing)
         self.cert_combo.bind("<Return>", lambda _e: self.run_search())
 
         self.run_btn = ttk.Button(
-            picker, text="Find resources  (Enter)", style="Accent.TButton",
+            row, text="Find resources", style="Accent.TButton",
             command=self.run_search, state=DISABLED,
         )
-        self.run_btn.pack(side=LEFT, padx=(8, 0))
+        self.run_btn.grid(row=0, column=1, sticky="e", padx=(12, 0))
 
-        # Tip
-        tip = ttk.Label(
-            outer,
-            text="Tip: start typing to filter the list. Press Enter to search. F5 re-runs.",
-            foreground="#555555",
-        )
-        tip.pack(anchor=W, pady=(6, 12))
+        ttk.Label(
+            card,
+            text="Start typing to filter • Press Enter to search • F5 re-runs",
+            style="CardMuted.TLabel",
+        ).grid(row=1, column=0, sticky=W, pady=(10, 0))
 
-        # Status / progress
-        status_frame = ttk.LabelFrame(outer, text="Status", padding=8)
-        status_frame.pack(fill=X)
-        self.status_var = StringVar(value="Loading certifications…")
-        self.status_label = ttk.Label(
-            status_frame, textvariable=self.status_var, style="Status.TLabel",
-            wraplength=900, justify=LEFT,
-        )
-        self.status_label.pack(side=LEFT, fill=X, expand=True)
-        self.progress = ttk.Progressbar(status_frame, mode="indeterminate", length=140)
-        self.progress.pack(side=RIGHT, padx=(8, 0))
-        self.progress.start(80)
+        # Results card
+        results_wrap = ttk.Frame(content, style="TFrame", padding=(32, 12, 32, 16))
+        results_wrap.grid(row=2, column=0, sticky="nsew")
+        results_wrap.grid_rowconfigure(0, weight=1)
+        results_wrap.grid_columnconfigure(0, weight=1)
 
-        # Results
-        results_frame = ttk.LabelFrame(outer, text="Results", padding=8)
-        results_frame.pack(fill=BOTH, expand=True, pady=(12, 0))
+        results_card = ttk.Frame(results_wrap, style="Card.TFrame", padding=2)
+        results_card.grid(row=0, column=0, sticky="nsew")
+        results_card.grid_rowconfigure(0, weight=1)
+        results_card.grid_columnconfigure(0, weight=1)
 
         self.results = ScrolledText(
-            results_frame,
+            results_card,
             wrap="word",
-            font=self.body_font,
-            bg="#ffffff",
-            fg="#111111",
-            insertbackground="#111111",
-            padx=10,
-            pady=10,
-            relief=SUNKEN,
-            borderwidth=1,
+            font=self.font_body_lg,
+            bg=T.surface, fg=T.text,
+            insertbackground=T.text,
+            selectbackground=T.accent, selectforeground=T.accent_text,
+            padx=22, pady=20,
+            relief=FLAT, borderwidth=0, highlightthickness=0,
             height=18,
         )
-        self.results.pack(fill=BOTH, expand=True)
-        self.results.tag_configure("h1", font=self.heading_font, spacing3=8, spacing1=8)
-        self.results.tag_configure("h2", font=self.h2_font, spacing3=6, spacing1=10, foreground="#0a5fb0")
-        self.results.tag_configure("bold", font=(self.body_font.cget("family"), 12, "bold"))
-        self.results.tag_configure("link", foreground="#0645AD", underline=True)
+        self.results.grid(row=0, column=0, sticky="nsew")
+        # Style the scrollbar that ScrolledText creates
+        try:
+            self.results.vbar.configure(
+                background=T.surface, troughcolor=T.surface,
+                activebackground=T.surface_hi, borderwidth=0,
+                highlightthickness=0, width=10, elementborderwidth=0,
+            )
+        except Exception:
+            pass
+
+        self.results.tag_configure(
+            "h1", font=self.font_h1, spacing3=10, spacing1=10, foreground=T.text,
+        )
+        self.results.tag_configure(
+            "h2", font=self.font_h2, spacing3=8, spacing1=14, foreground=T.accent,
+        )
+        self.results.tag_configure(
+            "h3", font=self.font_h3, spacing3=4, spacing1=8, foreground=T.text,
+        )
+        self.results.tag_configure(
+            "bold", font=(self.ui_family, 12, "bold"), foreground=T.text,
+        )
+        self.results.tag_configure("muted", foreground=T.text_muted)
+        self.results.tag_configure(
+            "link", foreground=T.link, underline=True,
+        )
         self.results.tag_bind("link", "<Enter>", lambda _e: self.results.config(cursor="hand2"))
         self.results.tag_bind("link", "<Leave>", lambda _e: self.results.config(cursor=""))
         self.results.configure(state=DISABLED)
 
         self._set_placeholder()
 
-        # Bottom status bar
+        # Footer status bar
         self.bottom_status = ttk.Label(
-            self.root, text="Ready", anchor=W, relief=SUNKEN, padding=(8, 4),
+            self.root, text="Ready", anchor=W, style="StatusBar.TLabel",
         )
-        self.bottom_status.pack(side=TOP, fill=X)
+        self.bottom_status.grid(row=1, column=0, columnspan=2, sticky="ew")
 
     # ---- Behavior --------------------------------------------------------
     def _set_placeholder(self) -> None:
@@ -315,8 +641,14 @@ class PrepaCertifApp:
         self.results.delete("1.0", END)
         self.results.insert(
             END,
-            "Your study plan will appear here once you pick a certification "
-            "and press \"Find resources\".\n",
+            "Your personalised study plan will appear here.\n\n",
+            "h3",
+        )
+        self.results.insert(
+            END,
+            "Pick a certification above and press “Find resources” to get "
+            "official Microsoft Learn paths and curated YouTube videos.",
+            "muted",
         )
         self.results.configure(state=DISABLED)
 
@@ -333,7 +665,6 @@ class PrepaCertifApp:
         threading.Thread(target=work, daemon=True).start()
 
     def _on_combo_typing(self, event):
-        # Filter the dropdown list as the user types.
         if event.keysym in ("Up", "Down", "Return", "Escape", "Left", "Right", "Tab"):
             return
         typed = self.cert_var.get().lower()
@@ -390,7 +721,7 @@ class PrepaCertifApp:
                     self.run_btn.configure(state=NORMAL)
                     self.progress.stop()
                     self._set_status(
-                        f"Loaded {len(payload)} certifications. Pick one and press \"Find resources\"."
+                        f"Loaded {len(payload)} certifications. Pick one and press “Find resources”."
                     )
                     self.cert_combo.focus_set()
                 elif kind == "certs_error":
@@ -423,7 +754,7 @@ class PrepaCertifApp:
             self.progress.start(80)
             self.bottom_status.configure(text="Working — this can take 30–60 seconds…")
         else:
-            self.run_btn.configure(state=NORMAL, text="Find resources  (Enter)")
+            self.run_btn.configure(state=NORMAL, text="Find resources")
             self.progress.stop()
             self.bottom_status.configure(text="Ready")
 
@@ -436,16 +767,15 @@ class PrepaCertifApp:
         self.results.configure(state=DISABLED)
 
     def _render_markdown(self, text: str) -> None:
-        """Render a small subset of Markdown into the Text widget.
-
-        We deliberately keep this simple and predictable rather than pulling in
-        a heavy HTML renderer: headings, bullets, bold, and clickable links.
-        """
+        """Render a small subset of Markdown: headings, bullets, bold, links."""
         self.results.configure(state=NORMAL)
         self.results.delete("1.0", END)
 
         for raw_line in text.splitlines() or [""]:
             line = raw_line.rstrip()
+            if line.startswith("### "):
+                self.results.insert(END, line[4:] + "\n", "h3")
+                continue
             if line.startswith("## "):
                 self.results.insert(END, line[3:] + "\n", "h2")
                 continue
@@ -453,7 +783,7 @@ class PrepaCertifApp:
                 self.results.insert(END, line[2:] + "\n", "h1")
                 continue
             if line.startswith(("- ", "* ")):
-                self.results.insert(END, "  •  ")
+                self.results.insert(END, "   •  ")
                 self._insert_with_links_and_bold(line[2:])
                 self.results.insert(END, "\n")
                 continue
@@ -463,7 +793,6 @@ class PrepaCertifApp:
         self.results.configure(state=DISABLED)
 
     def _insert_with_links_and_bold(self, line: str) -> None:
-        # Handle markdown [text](url) first, then bare URLs, then **bold**.
         pos = 0
         md_link = re.compile(r"\[([^\]]+)\]\((https?://[^)]+)\)")
         for m in md_link.finditer(line):
@@ -494,10 +823,8 @@ class PrepaCertifApp:
         end = self.results.index(END + "-1c")
         self.results.tag_add(tag, start, end)
         self.results.tag_bind(tag, "<Button-1>", lambda _e, u=url: webbrowser.open(u))
-        # Keyboard alternative: append the URL in parentheses for screen readers
-        # and copy/paste users when the label is not itself a URL.
         if label != url:
-            self.results.insert(END, f" ({url})")
+            self.results.insert(END, f" ({url})", "muted")
 
     # ---- Dialogs --------------------------------------------------------
     def open_settings(self) -> None:
@@ -510,7 +837,7 @@ class PrepaCertifApp:
                 "1. Open Settings (Ctrl+,) and paste your OpenRouter API key.\n"
                 "2. Pick a Microsoft certification from the list — start typing "
                 "to filter.\n"
-                "3. Press \"Find resources\" (or Enter).\n"
+                "3. Press “Find resources” (or Enter).\n"
                 "4. The assistant will gather official learning paths, "
                 "documentation and YouTube videos. Click any link to open it "
                 "in your browser."
@@ -532,6 +859,13 @@ class PrepaCertifApp:
 
 def main() -> None:
     root = Tk()
+    # On Windows, ask for per-monitor DPI awareness so fonts stay crisp.
+    if platform.system() == "Windows":
+        try:
+            from ctypes import windll
+            windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:
+            pass
     PrepaCertifApp(root)
     root.mainloop()
 
