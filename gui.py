@@ -1,10 +1,10 @@
 """Desktop GUI for Prépa Certif.
 
-Modern desktop UI inspired by Claude Desktop / Discord / ChatGPT:
+Modern desktop UI with a refined Talan-inspired brand treatment:
 
-* Dark, warm color palette with a single accent color.
-* Sidebar + content layout with subtle separators (no Win95 chrome).
-* Soft typography (Segoe UI Variable on Windows, system defaults elsewhere).
+* Light professional palette using Talan blue, green, pink and purple.
+* Sidebar + content layout with subtle separators and brand color accents.
+* Arial typography for every visible control.
 * Rounded "pill" accent button with hover state.
 * Card-style result area, no SUNKEN borders or LabelFrame chrome.
 * Full keyboard navigation, screen-reader friendly labels, and clickable
@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import platform
 import re
+import sys
 import threading
 import webbrowser
 from pathlib import Path
@@ -32,6 +33,8 @@ from tkinter import (
     W,
     X,
     Y,
+    Canvas,
+    Label,
     Menu,
     StringVar,
     Tk,
@@ -47,11 +50,21 @@ from dotenv import load_dotenv, set_key
 from agent import run_certification_agent
 from tools import fetch_certifications
 
-ENV_PATH = Path(__file__).resolve().parent / ".env"
 DEFAULT_MODEL_ID = "google/gemma-4-31b-it"
 
 APP_TITLE = "Prépa Certif"
 APP_SUBTITLE = "Microsoft Certification Study Planner"
+
+
+def _config_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        appdata = os.getenv("APPDATA")
+        root = Path(appdata) if appdata else Path.home()
+        return root / "PrepaCertif"
+    return Path(__file__).resolve().parent
+
+
+ENV_PATH = _config_dir() / ".env"
 
 
 # ---------------------------------------------------------------------------
@@ -59,46 +72,41 @@ APP_SUBTITLE = "Microsoft Certification Study Planner"
 # ---------------------------------------------------------------------------
 
 class Theme:
-    """Modern dark palette inspired by Claude Desktop's warm neutrals."""
+    """Talan brand palette tuned for accessible desktop UI contrast."""
+
+    talan_blue = "#5480BA"
+    talan_green = "#8F9424"
+    talan_pink = "#E04580"
+    talan_purple = "#6B367D"
+    talan_dark_green = "#1C662E"
 
     # Surfaces
-    bg = "#1f1e1d"          # app background
-    sidebar = "#191817"     # sidebar / header background
-    surface = "#262524"     # cards, inputs
-    surface_hi = "#2f2d2c"  # hover / focus
-    border = "#3a3836"
+    bg = "#f4f7fb"          # app background
+    sidebar = "#ffffff"     # sidebar / header background
+    surface = "#ffffff"     # cards, inputs
+    surface_hi = "#eef3fa"  # hover / focus
+    border = "#d7e0ec"
 
     # Text
-    text = "#ececec"
-    text_muted = "#a3a09c"
-    text_subtle = "#6f6c68"
+    text = "#1f2937"
+    text_muted = "#576579"
+    text_subtle = "#8490a3"
 
-    # Accent (Claude-ish warm coral)
-    accent = "#d97757"
-    accent_hi = "#e08a6e"
-    accent_pressed = "#c2613f"
-    accent_text = "#1a1716"
+    # Accent
+    accent = talan_purple
+    accent_hi = "#7d4590"
+    accent_pressed = "#562a65"
+    accent_text = "#ffffff"
 
     # Semantic
-    link = "#f0a37f"
-    error = "#e06c75"
+    link = talan_pink
+    success = talan_green
+    error = talan_pink
 
 
 def _ui_font_family() -> str:
-    """Pick a clean, modern UI font available on the host system."""
-    families = set(tkfont.families())
-    for candidate in (
-        "Segoe UI Variable",
-        "Segoe UI",
-        "SF Pro Text",
-        "Inter",
-        "Helvetica Neue",
-        "Helvetica",
-        "Arial",
-    ):
-        if candidate in families:
-            return candidate
-    return tkfont.nametofont("TkDefaultFont").cget("family")
+    """Use the required brand font; Tk will substitute only if unavailable."""
+    return "Arial"
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +115,7 @@ def _ui_font_family() -> str:
 
 def ensure_env_file() -> None:
     """Make sure a .env file exists so set_key() can write to it."""
+    ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
     if not ENV_PATH.exists():
         ENV_PATH.write_text(
             f"OPENROUTER_API_KEY=\nMODEL_ID={DEFAULT_MODEL_ID}\n",
@@ -144,7 +153,7 @@ class SettingsDialog(Toplevel):
         frame = ttk.Frame(self, padding=24, style="Card.TFrame")
         frame.pack(fill=BOTH, expand=True, padx=16, pady=16)
 
-        ttk.Label(frame, text="Settings", style="H1.TLabel").grid(
+        ttk.Label(frame, text="Settings", style="CardH1.TLabel").grid(
             row=0, column=0, columnspan=2, sticky=W, pady=(0, 4)
         )
         ttk.Label(
@@ -155,7 +164,7 @@ class SettingsDialog(Toplevel):
             ),
             wraplength=460,
             justify=LEFT,
-            style="Muted.TLabel",
+            style="CardMuted.TLabel",
         ).grid(row=1, column=0, columnspan=2, sticky=W, pady=(0, 16))
 
         ttk.Label(frame, text="OpenRouter API key", style="FieldLabel.TLabel").grid(
@@ -263,7 +272,8 @@ class PrepaCertifApp:
         self.font_h1 = tkfont.Font(family=family, size=20, weight="bold")
         self.font_h2 = tkfont.Font(family=family, size=15, weight="bold")
         self.font_h3 = tkfont.Font(family=family, size=12, weight="bold")
-        self.font_brand = tkfont.Font(family=family, size=14, weight="bold")
+        self.font_brand = tkfont.Font(family=family, size=22, weight="bold")
+        self.font_brand_sub = tkfont.Font(family=family, size=11, weight="bold")
         self.font_small = tkfont.Font(family=family, size=10)
 
     def _setup_style(self) -> None:
@@ -293,8 +303,9 @@ class PrepaCertifApp:
         style.configure("Brand.TLabel",
                         background=T.sidebar, foreground=T.text, font=self.font_brand)
         style.configure("BrandTag.TLabel",
-                        background=T.sidebar, foreground=T.accent, font=(ui, 10, "bold"))
+                        background=T.sidebar, foreground=T.talan_green, font=(ui, 10, "bold"))
         style.configure("H1.TLabel", background=T.bg, foreground=T.text, font=self.font_h1)
+        style.configure("CardH1.TLabel", background=T.surface, foreground=T.text, font=self.font_h1)
         style.configure("H2.TLabel", background=T.bg, foreground=T.text, font=self.font_h2)
         style.configure("Muted.TLabel",
                         background=T.bg, foreground=T.text_muted, font=(ui, 10))
@@ -337,6 +348,7 @@ class PrepaCertifApp:
         style.map(
             "Ghost.TButton",
             background=[("active", T.surface_hi), ("pressed", T.border)],
+            foreground=[("active", T.talan_blue)],
         )
 
         # Buttons — Sidebar icon-like
@@ -349,7 +361,7 @@ class PrepaCertifApp:
         style.map(
             "Sidebar.TButton",
             background=[("active", T.surface), ("pressed", T.surface_hi)],
-            foreground=[("active", T.text)],
+            foreground=[("active", T.talan_blue)],
         )
 
         # Entries
@@ -407,8 +419,8 @@ class PrepaCertifApp:
         # Progress bar
         style.configure(
             "Modern.Horizontal.TProgressbar",
-            background=T.accent, troughcolor=T.surface,
-            bordercolor=T.surface, lightcolor=T.accent, darkcolor=T.accent,
+            background=T.success, troughcolor=T.surface_hi,
+            bordercolor=T.surface_hi, lightcolor=T.success, darkcolor=T.success,
             thickness=4,
         )
 
@@ -431,6 +443,25 @@ class PrepaCertifApp:
 
         self.root.config(menu=menubar)
 
+    def _pack_talan_word(self, parent, *, bg: str, font: tkfont.Font | None = None) -> None:
+        for letter, color in (
+            ("T", Theme.talan_blue),
+            ("A", Theme.talan_green),
+            ("L", Theme.talan_pink),
+            ("A", Theme.talan_blue),
+            ("N", Theme.talan_green),
+        ):
+            Label(
+                parent,
+                text=letter,
+                bg=bg,
+                fg=color,
+                font=font or self.font_brand,
+                bd=0,
+                padx=0,
+                pady=0,
+            ).pack(side=LEFT)
+
     def _build_layout(self) -> None:
         T = Theme
 
@@ -444,42 +475,40 @@ class PrepaCertifApp:
         sidebar.grid(row=0, column=0, sticky="nsew")
         sidebar.grid_propagate(False)
         sidebar.configure(width=280)
-        sidebar.grid_rowconfigure(4, weight=1)
+        sidebar.grid_rowconfigure(5, weight=1)
         sidebar.grid_columnconfigure(0, weight=1)
 
         # Brand row
         brand = ttk.Frame(sidebar, style="Sidebar.TFrame")
-        brand.grid(row=0, column=0, sticky="ew", padx=20, pady=(22, 4))
-        # Faux logo dot
-        dot = ttk.Frame(brand, style="Sidebar.TFrame", width=10, height=10)
-        dot.pack(side=LEFT, padx=(0, 10), pady=(4, 0))
-        dot.configure(width=10, height=10)
-        # Use a Canvas dot for color
-        try:
-            import tkinter as tk_  # local
-            c = tk_.Canvas(brand, width=12, height=12, bg=T.sidebar,
-                           highlightthickness=0, bd=0)
-            c.create_oval(1, 1, 11, 11, fill=T.accent, outline="")
-            c.pack(side=LEFT, padx=(0, 10), pady=(4, 0))
-            dot.destroy()
-        except Exception:
-            pass
-
-        ttk.Label(brand, text=APP_TITLE, style="Brand.TLabel").pack(side=LEFT)
+        brand.grid(row=0, column=0, sticky="ew", padx=20, pady=(22, 2))
+        mark = Canvas(brand, width=34, height=22, bg=T.sidebar, highlightthickness=0, bd=0)
+        for i, color in enumerate(
+            (T.talan_blue, T.talan_green, T.talan_pink, T.talan_purple)
+        ):
+            mark.create_rectangle(1 + i * 8, 5, 7 + i * 8, 17, fill=color, outline="")
+        mark.pack(side=LEFT, padx=(0, 10), pady=(4, 0))
+        self._pack_talan_word(brand, bg=T.sidebar)
 
         ttk.Label(
             sidebar,
-            text=APP_SUBTITLE.upper(),
+            text=f"{APP_TITLE.upper()} · {APP_SUBTITLE.upper()}",
             style="BrandTag.TLabel",
-        ).grid(row=1, column=0, sticky=W, padx=20, pady=(0, 22))
+        ).grid(row=1, column=0, sticky=W, padx=20, pady=(0, 20))
+
+        sidebar_band = Canvas(sidebar, height=4, bg=T.sidebar, highlightthickness=0, bd=0)
+        sidebar_band.grid(row=2, column=0, sticky="ew", padx=20)
+        for i, color in enumerate(
+            (T.talan_blue, T.talan_green, T.talan_pink, T.talan_purple)
+        ):
+            sidebar_band.create_rectangle(i * 60, 0, (i + 1) * 60, 4, fill=color, outline="")
 
         ttk.Separator(sidebar, orient="horizontal").grid(
-            row=2, column=0, sticky="ew", padx=20
+            row=3, column=0, sticky="ew", padx=20, pady=(8, 0)
         )
 
         # Sidebar navigation / actions
         nav = ttk.Frame(sidebar, style="Sidebar.TFrame")
-        nav.grid(row=3, column=0, sticky="ew", padx=12, pady=12)
+        nav.grid(row=4, column=0, sticky="ew", padx=12, pady=12)
         nav.grid_columnconfigure(0, weight=1)
 
         ttk.Button(
@@ -497,11 +526,11 @@ class PrepaCertifApp:
 
         # Status panel (bottom of sidebar)
         status_panel = ttk.Frame(sidebar, style="Sidebar.TFrame")
-        status_panel.grid(row=5, column=0, sticky="ew", padx=20, pady=(0, 18))
+        status_panel.grid(row=7, column=0, sticky="ew", padx=20, pady=(0, 18))
         status_panel.grid_columnconfigure(0, weight=1)
 
         ttk.Separator(sidebar, orient="horizontal").grid(
-            row=4, column=0, sticky="sew", padx=20, pady=(0, 14)
+            row=6, column=0, sticky="sew", padx=20, pady=(0, 14)
         )
 
         ttk.Label(status_panel, text="STATUS", style="BrandTag.TLabel").grid(
@@ -528,6 +557,9 @@ class PrepaCertifApp:
         # Header
         header = ttk.Frame(content, style="TFrame", padding=(32, 28, 32, 8))
         header.grid(row=0, column=0, sticky="ew")
+        header_brand = ttk.Frame(header, style="TFrame")
+        header_brand.pack(anchor=W, pady=(0, 8))
+        self._pack_talan_word(header_brand, bg=T.bg, font=self.font_brand_sub)
         ttk.Label(
             header, text="Build a study plan", style="H1.TLabel",
         ).pack(anchor=W)
@@ -559,6 +591,7 @@ class PrepaCertifApp:
             font=self.font_body_lg, style="Modern.TCombobox",
         )
         self.cert_combo.grid(row=0, column=0, sticky="ew", ipady=6)
+        self.cert_combo.bind("<Button-1>", self._open_cert_dropdown_from_click, add="+")
         self.cert_combo.bind("<KeyRelease>", self._on_combo_typing)
         self.cert_combo.bind("<Return>", lambda _e: self.run_search())
 
@@ -672,6 +705,21 @@ class PrepaCertifApp:
             return
         filtered = [c for c in self.cert_choices if typed in c.lower()] if typed else self.cert_choices
         self.cert_combo["values"] = filtered
+        self._post_cert_dropdown()
+
+    def _open_cert_dropdown_from_click(self, _event) -> None:
+        self._post_cert_dropdown()
+
+    def _post_cert_dropdown(self) -> None:
+        if str(self.cert_combo.cget("state")) == "disabled" or not self.cert_combo["values"]:
+            return
+
+        def post_without_stealing_focus() -> None:
+            self.cert_combo.tk.call("ttk::combobox::Post", self.cert_combo)
+            self.cert_combo.focus_set()
+            self.cert_combo.icursor(END)
+
+        self.root.after_idle(post_without_stealing_focus)
 
     def run_search(self) -> None:
         if self.worker and self.worker.is_alive():
@@ -723,7 +771,6 @@ class PrepaCertifApp:
                     self._set_status(
                         f"Loaded {len(payload)} certifications. Pick one and press “Find resources”."
                     )
-                    self.cert_combo.focus_set()
                 elif kind == "certs_error":
                     self.progress.stop()
                     self._set_status(f"Could not load certifications: {payload}")
