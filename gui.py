@@ -50,7 +50,7 @@ from dotenv import load_dotenv, set_key
 from agent import run_certification_agent
 from tools import fetch_certifications
 
-DEFAULT_MODEL_ID = "google/gemma-4-31b-it"
+DEFAULT_MODEL_ID = "openai/gpt-4o-mini"
 
 APP_TITLE = "Prépa Certif"
 APP_SUBTITLE = "Microsoft Certification Study Planner"
@@ -118,7 +118,7 @@ def ensure_env_file() -> None:
     ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
     if not ENV_PATH.exists():
         ENV_PATH.write_text(
-            f"OPENROUTER_API_KEY=\nMODEL_ID={DEFAULT_MODEL_ID}\n",
+            f"GITHUB_TOKEN=\nMODEL_ID={DEFAULT_MODEL_ID}\n",
             encoding="utf-8",
         )
     load_dotenv(ENV_PATH, override=True)
@@ -126,9 +126,9 @@ def ensure_env_file() -> None:
 
 def save_settings(api_key: str, model_id: str) -> None:
     ensure_env_file()
-    set_key(str(ENV_PATH), "OPENROUTER_API_KEY", api_key)
+    set_key(str(ENV_PATH), "GITHUB_TOKEN", api_key)
     set_key(str(ENV_PATH), "MODEL_ID", model_id or DEFAULT_MODEL_ID)
-    os.environ["OPENROUTER_API_KEY"] = api_key
+    os.environ["GITHUB_TOKEN"] = api_key
     os.environ["MODEL_ID"] = model_id or DEFAULT_MODEL_ID
 
 
@@ -147,7 +147,7 @@ class SettingsDialog(Toplevel):
         self.minsize(520, 240)
 
         ensure_env_file()
-        self.api_key_var = StringVar(value=os.getenv("OPENROUTER_API_KEY", ""))
+        self.api_key_var = StringVar(value=os.getenv("GITHUB_TOKEN", ""))
         self.model_var = StringVar(value=os.getenv("MODEL_ID", DEFAULT_MODEL_ID))
 
         frame = ttk.Frame(self, padding=24, style="Card.TFrame")
@@ -159,15 +159,15 @@ class SettingsDialog(Toplevel):
         ttk.Label(
             frame,
             text=(
-                "Enter your OpenRouter API key. You can get a free key at "
-                "https://openrouter.ai/keys."
+                "Enter your GitHub personal access token to use GitHub Models. "
+                "You can create one at https://github.com/settings/tokens."
             ),
             wraplength=460,
             justify=LEFT,
             style="CardMuted.TLabel",
         ).grid(row=1, column=0, columnspan=2, sticky=W, pady=(0, 16))
 
-        ttk.Label(frame, text="OpenRouter API key", style="FieldLabel.TLabel").grid(
+        ttk.Label(frame, text="GitHub token", style="FieldLabel.TLabel").grid(
             row=2, column=0, columnspan=2, sticky=W, pady=(0, 4)
         )
         key_entry = ttk.Entry(
@@ -733,10 +733,11 @@ class PrepaCertifApp:
             )
             return
 
-        if not os.getenv("OPENROUTER_API_KEY"):
+        if not os.getenv("GITHUB_TOKEN"):
             if messagebox.askyesno(
-                "API key needed",
-                "An OpenRouter API key is required. Open Settings to add one now?",
+                "GitHub token needed",
+                "A GitHub personal access token is required to use GitHub Models. "
+                "Open Settings to add one now?",
                 parent=self.root,
             ):
                 self.open_settings()
@@ -881,7 +882,7 @@ class PrepaCertifApp:
         messagebox.showinfo(
             "How to use",
             (
-                "1. Open Settings (Ctrl+,) and paste your OpenRouter API key.\n"
+                "1. Open Settings (Ctrl+,) and paste your GitHub personal access token (used for GitHub Models).\n"
                 "2. Pick a Microsoft certification from the list — start typing "
                 "to filter.\n"
                 "3. Press “Find resources” (or Enter).\n"

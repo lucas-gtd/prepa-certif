@@ -27,7 +27,8 @@ python main.py
 ```
 
 The first time you launch the app, open **File → Settings** (or press `Ctrl+,`)
-and paste your free [OpenRouter API key](https://openrouter.ai/keys). That's it.
+and paste a [GitHub personal access token](https://github.com/settings/tokens)
+(used to call [GitHub Models](https://github.com/marketplace/models)). That's it.
 
 ## Keyboard shortcuts
 
