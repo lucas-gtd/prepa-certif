@@ -148,7 +148,8 @@ class SettingsDialog(Toplevel):
 
         ensure_env_file()
         self.api_key_var = StringVar(value=os.getenv("GITHUB_TOKEN", ""))
-        self.model_var = StringVar(value=os.getenv("MODEL_ID", DEFAULT_MODEL_ID))
+        self.model_var = StringVar(
+            value=os.getenv("MODEL_ID", DEFAULT_MODEL_ID))
 
         frame = ttk.Frame(self, padding=24, style="Card.TFrame")
         frame.pack(fill=BOTH, expand=True, padx=16, pady=16)
@@ -211,8 +212,10 @@ class SettingsDialog(Toplevel):
         key_entry.focus_set()
 
     def _save(self):
-        save_settings(self.api_key_var.get().strip(), self.model_var.get().strip())
-        messagebox.showinfo("Settings saved", "Your settings have been saved.", parent=self)
+        save_settings(self.api_key_var.get().strip(),
+                      self.model_var.get().strip())
+        messagebox.showinfo(
+            "Settings saved", "Your settings have been saved.", parent=self)
         self.destroy()
 
 
@@ -273,7 +276,8 @@ class PrepaCertifApp:
         self.font_h2 = tkfont.Font(family=family, size=15, weight="bold")
         self.font_h3 = tkfont.Font(family=family, size=12, weight="bold")
         self.font_brand = tkfont.Font(family=family, size=22, weight="bold")
-        self.font_brand_sub = tkfont.Font(family=family, size=11, weight="bold")
+        self.font_brand_sub = tkfont.Font(
+            family=family, size=11, weight="bold")
         self.font_small = tkfont.Font(family=family, size=10)
 
     def _setup_style(self) -> None:
@@ -297,16 +301,20 @@ class PrepaCertifApp:
 
         # Labels
         style.configure("TLabel", background=T.bg, foreground=T.text)
-        style.configure("Sidebar.TLabel", background=T.sidebar, foreground=T.text)
+        style.configure("Sidebar.TLabel", background=T.sidebar,
+                        foreground=T.text)
         style.configure("SidebarMuted.TLabel",
                         background=T.sidebar, foreground=T.text_muted, font=(ui, 10))
         style.configure("Brand.TLabel",
                         background=T.sidebar, foreground=T.text, font=self.font_brand)
         style.configure("BrandTag.TLabel",
                         background=T.sidebar, foreground=T.talan_green, font=(ui, 10, "bold"))
-        style.configure("H1.TLabel", background=T.bg, foreground=T.text, font=self.font_h1)
-        style.configure("CardH1.TLabel", background=T.surface, foreground=T.text, font=self.font_h1)
-        style.configure("H2.TLabel", background=T.bg, foreground=T.text, font=self.font_h2)
+        style.configure("H1.TLabel", background=T.bg,
+                        foreground=T.text, font=self.font_h1)
+        style.configure("CardH1.TLabel", background=T.surface,
+                        foreground=T.text, font=self.font_h1)
+        style.configure("H2.TLabel", background=T.bg,
+                        foreground=T.text, font=self.font_h2)
         style.configure("Muted.TLabel",
                         background=T.bg, foreground=T.text_muted, font=(ui, 10))
         style.configure("CardMuted.TLabel",
@@ -400,7 +408,8 @@ class PrepaCertifApp:
         self.root.option_add("*TCombobox*Listbox.background", T.surface)
         self.root.option_add("*TCombobox*Listbox.foreground", T.text)
         self.root.option_add("*TCombobox*Listbox.selectBackground", T.accent)
-        self.root.option_add("*TCombobox*Listbox.selectForeground", T.accent_text)
+        self.root.option_add(
+            "*TCombobox*Listbox.selectForeground", T.accent_text)
         self.root.option_add("*TCombobox*Listbox.borderWidth", 0)
         self.root.option_add("*TCombobox*Listbox.font", (ui, 11))
 
@@ -429,9 +438,11 @@ class PrepaCertifApp:
         filemenu = Menu(menubar, tearoff=0, bg=Theme.surface, fg=Theme.text,
                         activebackground=Theme.accent, activeforeground=Theme.accent_text,
                         borderwidth=0)
-        filemenu.add_command(label="Settings…", accelerator="Ctrl+,", command=self.open_settings)
+        filemenu.add_command(
+            label="Settings…", accelerator="Ctrl+,", command=self.open_settings)
         filemenu.add_separator()
-        filemenu.add_command(label="Quit", accelerator="Alt+F4", command=self.root.destroy)
+        filemenu.add_command(
+            label="Quit", accelerator="Alt+F4", command=self.root.destroy)
         menubar.add_cascade(label="File", menu=filemenu)
 
         helpmenu = Menu(menubar, tearoff=0, bg=Theme.surface, fg=Theme.text,
@@ -481,11 +492,13 @@ class PrepaCertifApp:
         # Brand row
         brand = ttk.Frame(sidebar, style="Sidebar.TFrame")
         brand.grid(row=0, column=0, sticky="ew", padx=20, pady=(22, 2))
-        mark = Canvas(brand, width=34, height=22, bg=T.sidebar, highlightthickness=0, bd=0)
+        mark = Canvas(brand, width=34, height=22,
+                      bg=T.sidebar, highlightthickness=0, bd=0)
         for i, color in enumerate(
             (T.talan_blue, T.talan_green, T.talan_pink, T.talan_purple)
         ):
-            mark.create_rectangle(1 + i * 8, 5, 7 + i * 8, 17, fill=color, outline="")
+            mark.create_rectangle(1 + i * 8, 5, 7 + i * 8,
+                                  17, fill=color, outline="")
         mark.pack(side=LEFT, padx=(0, 10), pady=(4, 0))
         self._pack_talan_word(brand, bg=T.sidebar)
 
@@ -495,12 +508,14 @@ class PrepaCertifApp:
             style="BrandTag.TLabel",
         ).grid(row=1, column=0, sticky=W, padx=20, pady=(0, 20))
 
-        sidebar_band = Canvas(sidebar, height=4, bg=T.sidebar, highlightthickness=0, bd=0)
+        sidebar_band = Canvas(
+            sidebar, height=4, bg=T.sidebar, highlightthickness=0, bd=0)
         sidebar_band.grid(row=2, column=0, sticky="ew", padx=20)
         for i, color in enumerate(
             (T.talan_blue, T.talan_green, T.talan_pink, T.talan_purple)
         ):
-            sidebar_band.create_rectangle(i * 60, 0, (i + 1) * 60, 4, fill=color, outline="")
+            sidebar_band.create_rectangle(
+                i * 60, 0, (i + 1) * 60, 4, fill=color, outline="")
 
         ttk.Separator(sidebar, orient="horizontal").grid(
             row=3, column=0, sticky="ew", padx=20, pady=(8, 0)
@@ -573,7 +588,8 @@ class PrepaCertifApp:
         ).pack(anchor=W, pady=(6, 0))
 
         # Picker card
-        picker_wrap = ttk.Frame(content, style="TFrame", padding=(32, 8, 32, 8))
+        picker_wrap = ttk.Frame(content, style="TFrame",
+                                padding=(32, 8, 32, 8))
         picker_wrap.grid(row=1, column=0, sticky="ew")
         picker_wrap.grid_columnconfigure(0, weight=1)
 
@@ -591,7 +607,8 @@ class PrepaCertifApp:
             font=self.font_body_lg, style="Modern.TCombobox",
         )
         self.cert_combo.grid(row=0, column=0, sticky="ew", ipady=6)
-        self.cert_combo.bind("<Button-1>", self._open_cert_dropdown_from_click, add="+")
+        self.cert_combo.bind(
+            "<Button-1>", self._open_cert_dropdown_from_click, add="+")
         self.cert_combo.bind("<KeyRelease>", self._on_combo_typing)
         self.cert_combo.bind("<Return>", lambda _e: self.run_search())
 
@@ -608,7 +625,8 @@ class PrepaCertifApp:
         ).grid(row=1, column=0, sticky=W, pady=(10, 0))
 
         # Results card
-        results_wrap = ttk.Frame(content, style="TFrame", padding=(32, 12, 32, 16))
+        results_wrap = ttk.Frame(
+            content, style="TFrame", padding=(32, 12, 32, 16))
         results_wrap.grid(row=2, column=0, sticky="nsew")
         results_wrap.grid_rowconfigure(0, weight=1)
         results_wrap.grid_columnconfigure(0, weight=1)
@@ -656,8 +674,10 @@ class PrepaCertifApp:
         self.results.tag_configure(
             "link", foreground=T.link, underline=True,
         )
-        self.results.tag_bind("link", "<Enter>", lambda _e: self.results.config(cursor="hand2"))
-        self.results.tag_bind("link", "<Leave>", lambda _e: self.results.config(cursor=""))
+        self.results.tag_bind(
+            "link", "<Enter>", lambda _e: self.results.config(cursor="hand2"))
+        self.results.tag_bind(
+            "link", "<Leave>", lambda _e: self.results.config(cursor=""))
         self.results.configure(state=DISABLED)
 
         self._set_placeholder()
@@ -703,7 +723,8 @@ class PrepaCertifApp:
         typed = self.cert_var.get().lower()
         if not self.cert_choices:
             return
-        filtered = [c for c in self.cert_choices if typed in c.lower()] if typed else self.cert_choices
+        filtered = [c for c in self.cert_choices if typed in c.lower()
+                    ] if typed else self.cert_choices
         self.cert_combo["values"] = filtered
         self._post_cert_dropdown()
 
@@ -774,7 +795,8 @@ class PrepaCertifApp:
                     )
                 elif kind == "certs_error":
                     self.progress.stop()
-                    self._set_status(f"Could not load certifications: {payload}")
+                    self._set_status(
+                        f"Could not load certifications: {payload}")
                     messagebox.showerror(
                         "Network error",
                         f"Could not fetch the certification list:\n{payload}",
@@ -790,7 +812,8 @@ class PrepaCertifApp:
                 elif kind == "error":
                     self._set_running(False)
                     self._set_status(f"Error: {payload}")
-                    messagebox.showerror("Something went wrong", payload, parent=self.root)
+                    messagebox.showerror(
+                        "Something went wrong", payload, parent=self.root)
         except Empty:
             pass
         finally:
@@ -800,7 +823,8 @@ class PrepaCertifApp:
         if running:
             self.run_btn.configure(state=DISABLED, text="Working…")
             self.progress.start(80)
-            self.bottom_status.configure(text="Working — this can take 30–60 seconds…")
+            self.bottom_status.configure(
+                text="Working — this can take 30–60 seconds…")
         else:
             self.run_btn.configure(state=NORMAL, text="Find resources")
             self.progress.stop()
@@ -870,7 +894,8 @@ class PrepaCertifApp:
         self.results.insert(END, label, ("link", tag))
         end = self.results.index(END + "-1c")
         self.results.tag_add(tag, start, end)
-        self.results.tag_bind(tag, "<Button-1>", lambda _e, u=url: webbrowser.open(u))
+        self.results.tag_bind(tag, "<Button-1>", lambda _e,
+                              u=url: webbrowser.open(u))
         if label != url:
             self.results.insert(END, f" ({url})", "muted")
 

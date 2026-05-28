@@ -32,12 +32,12 @@ and paste a [GitHub personal access token](https://github.com/settings/tokens)
 
 ## Keyboard shortcuts
 
-| Shortcut  | Action                  |
-|-----------|-------------------------|
-| `Ctrl+,`  | Open Settings           |
-| `Enter`   | Run search              |
-| `F5`      | Re-run search           |
-| `Tab`     | Move between controls   |
+| Shortcut | Action                |
+| -------- | --------------------- |
+| `Ctrl+,` | Open Settings         |
+| `Enter`  | Run search            |
+| `F5`     | Re-run search         |
+| `Tab`    | Move between controls |
 
 ## Power-user CLI
 
