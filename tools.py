@@ -11,62 +11,65 @@ from youtube_transcript_api._errors import (
 tools = [
     {
         "type": "function",
-        "name": "search_microsoft_learn",
-        "description": "Search Microsoft Learn for learning paths and documentations related to a specific certification exam.",
-        "strict": True,
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "certification": {
-                    "type": "string",
-                    "description": "The certification exam code or name, e.g. 'AZ-900'"
-                }
-            },
-            "required": ["certification"],
-            "additionalProperties": False
+        "function": {
+            "name": "search_microsoft_learn",
+            "description": "Search Microsoft Learn for learning paths and documentations related to a specific certification exam.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "certification": {
+                        "type": "string",
+                        "description": "The certification exam code or name, e.g. 'AZ-900'"
+                    }
+                },
+                "required": ["certification"],
+                "additionalProperties": False
+            }
         }
     },
     {
         "type": "function",
-        "name": "search_youtube_videos",
-        "description": "Search YouTube for videos related to a certification exam. Returns a list of videos with title, video_id, url, channel and duration.",
-        "strict": True,
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "The search query, typically the certification code or name followed by keywords like 'tutorial' or 'exam prep'."
+        "function": {
+            "name": "search_youtube_videos",
+            "description": "Search YouTube for videos related to a certification exam. Returns a list of videos with title, video_id, url, channel and duration.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query, typically the certification code or name followed by keywords like 'tutorial' or 'exam prep'."
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of videos to return (1-15)."
+                    }
                 },
-                "max_results": {
-                    "type": "integer",
-                    "description": "Maximum number of videos to return (1-15)."
-                }
-            },
-            "required": ["query", "max_results"],
-            "additionalProperties": False
+                "required": ["query", "max_results"],
+                "additionalProperties": False
+            }
         }
     },
     {
         "type": "function",
-        "name": "get_youtube_transcript",
-        "description": "Fetch the transcript of a YouTube video. Use this to verify a video's content is actually relevant to the certification before recommending it.",
-        "strict": True,
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "video_id": {
-                    "type": "string",
-                    "description": "The YouTube video id (the 11-character string after 'v=' in the URL)."
+        "function": {
+            "name": "get_youtube_transcript",
+            "description": "Fetch the transcript of a YouTube video. Use this to verify a video's content is actually relevant to the certification before recommending it.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "video_id": {
+                        "type": "string",
+                        "description": "The YouTube video id (the 11-character string after 'v=' in the URL)."
+                    },
+                    "languages": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Preferred transcript languages in priority order, e.g. ['en', 'fr']."
+                    }
                 },
-                "languages": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Preferred transcript languages in priority order, e.g. ['en', 'fr']."
-                }
-            },
-            "required": ["video_id", "languages"],
-            "additionalProperties": False
+                "required": ["video_id", "languages"],
+                "additionalProperties": False
+            }
         }
     }
 ]
@@ -108,27 +111,38 @@ def fetch_certifications() -> list[str]:
     return sorted(set(c.get("title") for c in certs if c.get("title")))
 
 
-def search_youtube_videos(query: str, max_results: int = 8) -> list:
-    """Search YouTube without an API key by scraping the search results page."""
+def search_youtube_videos(query: str, max_results: int = 8) -> dict:
+    """Search YouTube without an API key by scraping the search results page.
+
+    Returns a dict with either a list of videos or an error description so the
+    agent loop can keep going even when YouTube rate-limits us.
+    """
     max_results = max(1, min(int(max_results or 8), 15))
-    resp = requests.get(
-        "https://www.youtube.com/results",
-        params={"search_query": query, "hl": "en"},
-        headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/125.0.0.0 Safari/537.36"
-            ),
-            "Accept-Language": "en-US,en;q=0.9",
-        },
-        timeout=15,
-    )
-    resp.raise_for_status()
+    try:
+        resp = requests.get(
+            "https://www.youtube.com/results",
+            params={"search_query": query, "hl": "en"},
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/125.0.0.0 Safari/537.36"
+                ),
+                "Accept-Language": "en-US,en;q=0.9",
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else None
+        reason = "rate_limited" if status == 429 else f"http_{status}"
+        return {"videos": [], "error": reason}
+    except requests.RequestException as exc:
+        return {"videos": [], "error": f"request_failed: {exc}"}
 
     match = re.search(r"var ytInitialData = (\{.*?\});</script>", resp.text)
     if not match:
-        return []
+        return {"videos": [], "error": "no_data"}
     data = json.loads(match.group(1))
 
     videos: list = []
@@ -164,7 +178,7 @@ def search_youtube_videos(query: str, max_results: int = 8) -> list:
                 walk(v)
 
     walk(data)
-    return videos
+    return {"videos": videos}
 
 
 def get_youtube_transcript(video_id: str, languages: list[str] | None = None) -> dict:
@@ -190,24 +204,24 @@ def get_youtube_transcript(video_id: str, languages: list[str] | None = None) ->
     }
 
 
-def process_tool_usage(response, input_list):
-    for item in response.output:
-        if item.type == "function_call":
-            args = json.loads(item.arguments or "{}")
-            if item.name == "search_microsoft_learn":
-                output = search_microsoft_learn(args["certification"])
-            elif item.name == "search_youtube_videos":
-                output = search_youtube_videos(
-                    args["query"], args.get("max_results", 8)
-                )
-            elif item.name == "get_youtube_transcript":
-                output = get_youtube_transcript(
-                    args["video_id"], args.get("languages") or ["en"]
-                )
-            else:
-                continue
-            input_list.append({
-                "type": "function_call_output",
-                "call_id": item.call_id,
-                "output": json.dumps(output),
-            })
+def process_tool_usage(tool_calls, messages):
+    for tc in tool_calls:
+        name = tc.function.name
+        args = json.loads(tc.function.arguments or "{}")
+        if name == "search_microsoft_learn":
+            output = search_microsoft_learn(args["certification"])
+        elif name == "search_youtube_videos":
+            output = search_youtube_videos(
+                args["query"], args.get("max_results", 8)
+            )
+        elif name == "get_youtube_transcript":
+            output = get_youtube_transcript(
+                args["video_id"], args.get("languages") or ["en"]
+            )
+        else:
+            continue
+        messages.append({
+            "role": "tool",
+            "tool_call_id": tc.id,
+            "content": json.dumps(output),
+        })
