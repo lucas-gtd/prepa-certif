@@ -1,14 +1,14 @@
 # Prépa certif
 
 A small CLI assistant that helps you prepare for a Microsoft certification exam.
-It picks a certification, then uses an LLM (via [OpenRouter](https://openrouter.ai))
+It picks a certification, then uses an LLM (via [GitHub Models](https://models.github.ai))
 to gather official Microsoft Learn learning paths, documentation, and relevant
 YouTube tutorials, and prints them as a clean Markdown summary in your terminal.
 
 ## Requirements
 
 - Python 3.10+
-- An [OpenRouter](https://openrouter.ai) API key
+- A [GitHub personal access token](https://github.com/settings/tokens) with access to GitHub Models
 
 ## Installation
 
@@ -36,12 +36,12 @@ cp .env.example .env
 Edit `.env`:
 
 ```dotenv
-OPENROUTER_API_KEY=your_openrouter_api_key_here
-MODEL_ID=google/gemma-4-31b-it
+GITHUB_TOKEN=your_github_pat_here
+MODEL_ID=openai/gpt-4o-mini
 ```
 
-- `OPENROUTER_API_KEY` — your API key from https://openrouter.ai/keys
-- `MODEL_ID` — any model ID available on OpenRouter
+- `GITHUB_TOKEN` — a GitHub PAT with the `models:read` scope (see https://github.com/settings/tokens)
+- `MODEL_ID` — any model ID available on GitHub Models (e.g. `openai/gpt-4o-mini`, `meta/Llama-3.3-70B-Instruct`)
 
 ## Run
 
