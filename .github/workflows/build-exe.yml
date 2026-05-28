@@ -1,0 +1,77 @@
+name: Build Windows .exe
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag name to publish the release under (e.g. v0.1.0). Leave blank to only upload the artifact."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build .exe with PyInstaller
+        run: |
+          pyinstaller --noconfirm --clean --onefile --windowed `
+            --name PrepaCertif `
+            --icon logo-talan.ico `
+            --collect-all youtube_transcript_api `
+            --collect-submodules dotenv `
+            --collect-submodules InquirerPy `
+            --collect-submodules rich `
+            main.py
+
+      - name: Smoke test (file exists)
+        run: |
+          if (!(Test-Path dist/PrepaCertif.exe)) { throw "PrepaCertif.exe not found" }
+          Get-Item dist/PrepaCertif.exe | Select-Object Name,Length
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PrepaCertif-windows
+          path: dist/PrepaCertif.exe
+          if-no-files-found: error
+
+      - name: Determine release tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.event.inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish GitHub Release
+        if: steps.tag.outputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Prépa Certif ${{ steps.tag.outputs.tag }}
+          generate_release_notes: true
+          files: dist/PrepaCertif.exe
